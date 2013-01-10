@@ -1,0 +1,117 @@
+%load_ext rmagic
+%R library(ggplot2)
+%R library(grDevices)
+
+import sys
+import numpy as np
+from msmbuilder import Project
+from msmbuilder import io
+import matplotlib.pyplot as pp
+from msmbuilder import Trajectory
+import subprocess
+
+#directory = sys.argv[1]
+
+#def main_py():
+#    directory = 'Data'
+
+
+#    p = Project.load_from('project/ProjectInfo.yaml')
+#    a = io.loadh(directory + '/Assignments.h5', deferred=False)['arr_0']
+#    g = Trajectory.load_trajectory_file(directory + '/Gens.lh5')
+
+#    for i in range(p.n_trajs):
+#        print 'plotting traj', i, '/', p.n_trajs
+#        xyz = p.load_traj(i)["XYZList"]
+#        pp.scatter(xyz[:,0], xyz[:,1], c=a[i,:], edgecolors='none', marker='.')
+#        if i == 20:
+#            break
+
+#    pp.savefig('delunay.png')
+#    subprocess.Popen('open delunay.png', shell=True)
+
+
+
+def main():
+    # first 
+    directory = sys.argv[1]
+    p = Project.load_from('project/Project.yaml')
+    a = io.loadh(directory + '/Assignments.h5', deferred=False)['arr_0']
+    g = Trajectory.load_trajectory_file(directory + '/Gens.lh5')
+    #2d
+    xy = np.concatenate([p.load_traj(i)['XYZList'] for i in xrange(p.n_trajs)])
+    #1d
+    a = a.reshape(a.size)
+    plot_convexhull(xy, a, title='Kinetic Microstates',
+        plot_fn='plot1.png')
+        
+        
+    directory = sys.argv[2]
+    p = Project.load_from('project/Project.yaml')
+    a = io.loadh(directory + '/Assignments.h5', deferred=False)['arr_0']
+    g = Trajectory.load_trajectory_file(directory + '/Gens.lh5')
+    #2d
+    xy = np.concatenate([p.load_traj(i)['XYZList'] for i in xrange(p.n_trajs)])
+    #1d
+    a = a.reshape(a.size)
+    plot_convexhull(xy, a, title='Unweighted Microstates',
+        plot_fn='plot2.png')
+        
+    
+def plot_convexhull(xy, a, title, plot_fn):
+    
+    state_indices = np.unique(a)
+    print xy.shape
+    
+    %R -i xy xy=xy
+    %R -i a a=a
+    %R -i state_indices state_indices=state_indices
+    %R -i title title=title
+    %R -i plot_fn plot_fn=plot_fn
+    
+    
+    get_ipython().run_cell_magic('R', '', '''
+    
+    # three vectors to accumulate the data
+    x = c() # x coordinates of points in convex hulls
+    y = c() # y coordinates 
+    id = c() # index of the shape that the x,y pair belongs to
+    
+    
+    # for each state, get all of the points, compute their convex hull
+    for (i in state_indices) {
+        rows = which(a==i)
+        if (length(rows) > 1) {
+            selected_x = xy[rows, 1]
+            selected_y = xy[rows, 2]
+            hull_indices = chull(selected_x, selected_y)
+            
+            x = c(x, selected_x[hull_indices])
+            y = c(y, selected_y[hull_indices])
+            id = c(id, rep(i, length(hull_indices)))
+        }
+    }
+    
+    
+    df = data.frame(x=x, y=y, id=as.factor(id))
+    
+    p = ggplot(data=df, aes(x=x, y=y, group=id))
+    p = p + opts(title=title)
+    
+    
+    # we don't want any fill, so set the polygon alpha to 0
+    p = p + geom_polygon(data=df, colour='black', alpha=0.0)
+    
+    # don't want a legend for the c
+    p = p + scale_x_continuous(name='X [arb. units]')
+    p = p + scale_y_continuous(name='Y [arb. units]')
+    
+
+    
+    ggsave(plot_fn)
+    system(sprintf('open %s', plot_fn))
+    
+    ''')
+    
+if __name__ == '__main__':
+    main()
